@@ -44,7 +44,7 @@ void setup() {
   Serial.begin(9600);
 
   for (int i = 0; i < 4; i++) {
-    directionButtonPins[i] = 24 + i;
+    directionButtonPins[i] = 25 + i;
     pinMode(directionButtonPins[i], INPUT);
   }
 
