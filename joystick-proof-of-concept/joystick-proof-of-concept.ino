@@ -25,6 +25,7 @@ void setup() {
 
 void loop() {
   blueValue = constrain(map(analogRead(xPin), 150, 950, 0, 255), 0, 255);
+  double blueValueCopy = constrain(map(analogRead(xPin), 150.0, 950, 0, 255), 0, 255.0);
   redValue = constrain(map(analogRead(yPin), 150, 950, 0, 255), 0, 255);
   greenValue = constrain(map(analogRead(xPin1), 150, 950, 0, 255), 0, 255);
   brightnessValue = constrain(map(analogRead(yPin1), 150, 950, 0, 255), 0, 255);
@@ -34,13 +35,17 @@ void loop() {
   neopixel.show();
   delay(10);
 
-  // Serial.print(upDown);
-  // Serial.print(" ");
-  // Serial.print(analogRead(xPin));
+  Serial.println(upDown);
+  Serial.print(" ");
+  Serial.print(analogRead(xPin));
+  Serial.print(" ");
+  Serial.print(blueValue);
+  Serial.print(" ");
+  Serial.print(analogRead(xPin));
 
   // Serial.println(leftRight);
   // Serial.print(" ");
   // Serial.print(analogRead(yPin));
-  delay(50);
+  // delay(50);
   // put your main code here, to run repeatedly:
 }
