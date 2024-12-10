@@ -15,6 +15,7 @@
 #include <math.h>
 #include <Encoder.h>
 #include <Adafruit_NeoPixel.h>
+#include <Adafruit_MCP4728.h>
 
 // DEFAULTS
 //For Adafruit shield, these are default.
@@ -22,8 +23,8 @@
 #define TFT_CS 10
 
 //SCREEN DIMENSIONS
-#define SCREEN_HEIGHT 320  
-#define SCREEN_WIDTH 240 
+#define SCREEN_HEIGHT 320
+#define SCREEN_WIDTH 240
 
 #define _USE_MATH_DEFINES
 
@@ -31,9 +32,10 @@
 #define TRIANGLE_HEIGHT 10
 #define TRIANGLE_BASE 10
 
-
-Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
-Adafruit_NeoPixel neopixel = Adafruit_NeoPixel(4, 33, NEO_RGB); //unused neopixel variable that I did not have time to implement.
+//OBJECTS
+Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC); //creates the display object allowing us to draw things on the display
+Adafruit_NeoPixel neopixel = Adafruit_NeoPixel(4, 33, NEO_RGB);  //unused neopixel variable that I did not have time to implement.
+Adafruit_MCP4728 mcp;
 
 //LEFT JOYSTICK PINS
 int xPin = A8;
@@ -94,6 +96,18 @@ float yDir = 0;
 int frameRate = 30;
 unsigned long lastFrame = 0;
 
+//Output values for CV and CC:
+float cxOut;
+float cyOut;
+float xDirOut;
+float yDirOut;
+
+float cxCCOut;
+float cyCCOut;
+float xDirCCOut;
+float yDirCCOut;
+
+
 //unimplemented color changing values
 int colorButtonPin = 29;
 int color = 65535;
@@ -105,7 +119,26 @@ int colorMode = 0;
  */
 void setup() {
   Serial.begin(9600);
-  tft.begin();
+  if(!tft.begin()) {
+    Serial.println("Failed to find ILI9341 display");
+    while(1) {
+      delay(10);
+    }
+  }
+
+  // Try to initialize the DAC
+  if (!mcp.begin()) {
+    Serial.println("Failed to find MCP4728 chip");
+    while (1) {
+      delay(10);
+    }
+  }
+
+  //for interfacing with the DAC
+  mcp.setChannelValue(MCP4728_CHANNEL_A, 4095);
+  // mcp.setChannelValue(MCP4728_CHANNEL_B, 2048);
+  // mcp.setChannelValue(MCP4728_CHANNEL_C, 1024);
+  // mcp.setChannelValue(MCP4728_CHANNEL_D, 0);
 
   pinMode(colorButtonPin, INPUT);
   tft.fillScreen(ILI9341_BLACK);
@@ -113,10 +146,10 @@ void setup() {
   tft.setTextColor(ILI9341_WHITE);
   tft.setTextSize(2);
   tft.setRotation(4);
-  tft.println("GAME-BASED CONTROL VOLTAGE");
+  tft.println("GAME-BASED CV");
   delay(2000);
-  tft.setTextSize(1);
-  tft.println("silas f24 digital project");
+  tft.setTextSize(2);
+  tft.println("silas digital project");
   delay(2000);
   tft.fillScreen(ILI9341_BLACK);
 }
@@ -126,15 +159,38 @@ void setup() {
  * constantly updating values and redrawing the character based on the given values.
  */
 void loop() {
-  directions[0] = constrainValues(xPin, directions[0], 50, 920, 0, 100); //x-Axis values
-  directions[1] = constrainValues(yPin, directions[1], 50, 920, 0, 100); //y-axis values
-  xDir = constrainValues(xPin1, xJoy, 0, 1023, -100.0, 100) / 100.0;     //x-axis directional values
-  yDir = constrainValues(yPin1, yJoy, 0, 1023, -100.0, 100) / 100.0;     //y-axis directional values
+  directions[0] = constrainValues(xPin, directions[0], 50, 920, 0, 100);  //x-Axis values
+  directions[1] = constrainValues(yPin, directions[1], 50, 920, 0, 100);  //y-axis values
+  xDir = constrainValues(xPin1, xJoy, 0, 1023, -100.0, 100) / 100.0;      //x-axis directional values
+  yDir = constrainValues(yPin1, yJoy, 0, 1023, -100.0, 100) / 100.0;      //y-axis directional values
 
+  //temporary code for constraining values to be sent out as CC / CV.
+  cxOut = constrain(map(cx,0, 240, 0, 4095),0, 4095);
+  cyOut = constrain(map(cy, 0, 320, 0, 4095), 0, 4095);
+  xDirOut = constrain(map(xDir, -0.9, 0.77, 0, 4095), 0, 4095);
+  yDirOut = constrain(map(yDir, -0.78, 0.84, 0, 4095), 0, 4095);
+
+  cxCCOut = constrain(map(cx, 0, 240, 0, 127), 0, 127);
+  cyCCOut = constrain(map(cy, 0, 320, 0, 127), 0, 127);
+  xDirCCOut = constrain(map(xDir, -0.9, 0.77, 0, 127), 0, 127);
+  yDirCCOut = constrain(map(yDir, -0.78, 0.84, 0, 127), 0, 127);
+  float thetaCCOut = constrain(map(theta, 0, 2 * PI, 0, 127), 0, 127);
+
+  if(!deadZone(directions[0])) {
+    usbMIDI.sendControlChange(1, cxCCOut, 1);
+  }
+  if(!deadZone(directions[1])) {
+    usbMIDI.sendControlChange(2, cyCCOut, 1);
+  }
+  if(!angularDeadZone(xDir) || !angularDeadZone(yDir)) {
+    usbMIDI.sendControlChange(3, thetaCCOut, 1);
+  }
+
+  mcp.setChannelValue(MCP4728_CHANNEL_A, cxOut);
   if (millis() > lastFrame + frameRate) {
     lastFrame = millis();
     clearCharacter(vx, vy, b1x, b1y, b2x, b2y);
-    checkY();
+    checkY(); 
     moveY();
     checkX();
     moveX();
@@ -325,6 +381,7 @@ bool deadZone(int value) {
 
 /**
  * Function that draws a character by simply calling the fillTriangle method from Adafruit's Native GFX Library.
+ * Consult the Adafruit GFX Library for more information on fillTriangle();
  */
 void drawCharacter(uint16_t vx, uint16_t vy, uint16_t b1x, uint16_t b1y, uint16_t b2x, uint16_t b2y) {
   tft.fillTriangle(vx, vy, b1x, b1y, b2x, b2y, ILI9341_WHITE);
@@ -334,6 +391,7 @@ void drawCharacter(uint16_t vx, uint16_t vy, uint16_t b1x, uint16_t b1y, uint16_
  * Function that removes a character by simply calling the fillTriangle method from Adafruit's Native GFX Library.
  * The main difference between this function and the drawCharacter function is that this one sets the triangle's color
  * as black, the default display background color (effectively giving the illusion that the character has been cleared).
+ * Consult the Adafruit GFX Library for more information regarding fillTriangle();
  */
 void clearCharacter(uint16_t vx, uint16_t vy, uint16_t b1x, uint16_t b1y, uint16_t b2x, uint16_t b2y) {
   tft.fillTriangle(vx, vy, b1x, b1y, b2x, b2y, ILI9341_BLACK);
