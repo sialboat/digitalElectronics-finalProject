@@ -1,60 +1,108 @@
-//GOOD MORNING GAMERS
-/* THIS IS ANOTHER COMMENT */
-//I AM MAKING CHANGES TO MY PROGRAM AAAAHHHHHHHH
+//This document contains the code for my F24 Digital Electronics Final Project.
+
+/*
+ * This code is all of the functionality for simulating an isosceles triangle with angular velocity and momentum-based movement.
+ * It stores the positional and angular information of said isosceles triangle for conversion to CV, effectively making this
+ * a video game-to-CV device.
+ * 
+ * @author Silas Wang
+ */
 
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_ILI9341.h>
-
+#include <math.h>
 #include <Encoder.h>
-
 #include <Adafruit_NeoPixel.h>
 
-#define SCREEN_HEIGHT 320  // OLED display width, in pixels
-#define SCREEN_WIDTH 240   // OLED display height, in pixels
-
+// DEFAULTS
 //For Adafruit shield, these are default.
 #define TFT_DC 9
 #define TFT_CS 10
 
-Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
+//SCREEN DIMENSIONS
+#define SCREEN_HEIGHT 320  
+#define SCREEN_WIDTH 240 
 
-Encoder enc(27, 26);
-Adafruit_NeoPixel neopixel = Adafruit_NeoPixel(4, 33, NEO_RGB);
+#define _USE_MATH_DEFINES
+
+//TRIANGLE DIMENSIONS
+#define TRIANGLE_HEIGHT 10
+#define TRIANGLE_BASE 10
+
+
+Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
+Adafruit_NeoPixel neopixel = Adafruit_NeoPixel(4, 33, NEO_RGB); //unused neopixel variable that I did not have time to implement.
 
 //LEFT JOYSTICK PINS
 int xPin = A8;
 int yPin = A9;
+
 //RIGHT JOYSTICK PINS
 int xPin1 = A7;
 int yPin1 = A6;
 
-//CHARACTER VALUES
-int radius = 4;
-// int speed = 1;
+//LEFT JOYSTICK VALUES
+//upDown == 1, leftRight == 0
+int directions[2] = { 0 };
+
+//RIGHT JOYSTICK VALUES
+int xJoy = 0;
+int yJoy = 0;
+
+//TRIANGLE VALUES:
+//center vertex; used to calculate the other parts of the triangle and for positioanl movement.
+int cx = SCREEN_HEIGHT / 2;
+int cy = SCREEN_WIDTH / 2;
+
+//triangle vertex values (X & Y) - pointy part of the triangle
+uint16_t vx = 0;
+uint16_t vy = 0;
+
+//base vertices values (X & Y) - not the point part of the triangle.
+uint16_t b1x = 0;
+uint16_t b1y = 0;
+uint16_t b2x = 0;
+uint16_t b2y = 0;
+
+//POSITIONAL MOVEMENT
 float xSpeed = 0.0;    //current speed
 float xSpeed2B = 0.0;  //speed to be
 float ySpeed = 0.0;
 float ySpeed2B = 0.0;
 float maxSpeed = 4.5;
-float acceleration = 0.10;
+float acceleration = 0.15;
 bool xMoving = false;
 bool yMoving = false;
 
-float xPos = radius + SCREEN_WIDTH / 2;
-float yPos = radius + SCREEN_HEIGHT / 2;
+//ANGULAR MOVEMENT:
+const float maxRotationSpeed = 0.25;  // max. rotation speed
+const float maxAcceleration = 0.15;   // rotation acceleration
+const float dampingFactor = 0.95;     // Damping factor to slow down the speed gradually
 
+float angularSpeed = 0;    // current angular speed
+float angularSpeed2B = 0;  // angular speed to be
+float theta = -PI / 2;     // Initial angle (pointing up)
+float angularAcceleration = 0;
+
+//values for triangle calculations
+float xDir = 0;
+float yDir = 0;
+
+//default frame rate of the program
+int frameRate = 30;
+unsigned long lastFrame = 0;
+
+//unimplemented color changing values
 int colorButtonPin = 29;
 int color = 65535;
 int colorMode = 0;
 
-//upDown == 1, leftRight == 0
-int directions[2] = { 0 };
-
-int frameRate = 30;
-unsigned long lastFrame = 0;
-
+/**
+ * This function contains code that runs once, namely the startup text code and the proper rotation
+ * for orientating the ILI9341 display.
+ */
 void setup() {
   Serial.begin(9600);
   tft.begin();
@@ -65,91 +113,141 @@ void setup() {
   tft.setTextColor(ILI9341_WHITE);
   tft.setTextSize(2);
   tft.setRotation(4);
-  tft.println("LOOK STEVE I DID IT");
+  tft.println("GAME-BASED CONTROL VOLTAGE");
   delay(2000);
-  tft.println("silas wang video game cv spaceship");
+  tft.setTextSize(1);
+  tft.println("silas f24 digital project");
   delay(2000);
   tft.fillScreen(ILI9341_BLACK);
-  // drawColorCharacter();
 }
 
-void helloWorld() {
-}
-
-// void drawCharacter() {
-//   display.fillCircle(3, 3, 3, SSD1306_WHITE);
-// }
-
-void drawCharacter(int xPos, int yPos, int radius, int color) {
-  tft.fillCircle(xPos, yPos, radius, color);
-}
-
-void clearCharacter(int xPos, int yPos, int radius) {
-  tft.fillCircle(xPos, yPos, radius, ILI9341_BLACK);
-}
-
+/**
+ * This function runs indefinitely until the program is shut down. This function contains code for 
+ * constantly updating values and redrawing the character based on the given values.
+ */
 void loop() {
-  // changeColor();
+  directions[0] = constrainValues(xPin, directions[0], 50, 920, 0, 100); //x-Axis values
+  directions[1] = constrainValues(yPin, directions[1], 50, 920, 0, 100); //y-axis values
+  xDir = constrainValues(xPin1, xJoy, 0, 1023, -100.0, 100) / 100.0;     //x-axis directional values
+  yDir = constrainValues(yPin1, yJoy, 0, 1023, -100.0, 100) / 100.0;     //y-axis directional values
+
   if (millis() > lastFrame + frameRate) {
     lastFrame = millis();
-
-    // display.clearDisplay();
-    clearCharacter(xPos, yPos, radius);
-    // Serial.print("yPos: ");
-    // Serial.print(yPos);
-    // Serial.print(" ");
-    // Serial.print(analogRead(yPin));
-    // Serial.println();
-
-    // // Serial.println(lastFrame);
-    // moveRight();
-    // moveLeft();
+    clearCharacter(vx, vy, b1x, b1y, b2x, b2y);
     checkY();
     moveY();
     checkX();
     moveX();
-    // moveUp();
-    // moveDown();
-    // modifySpeed();
-    drawCharacter(xPos, yPos, radius, color);
-    // moveDown();
-    // tft.fillScreen(ILI9341_BLACK);
-    // drawCharacter(xPos, yPos, radius);
-    // display.display();
+    checkDirection();
+    pointDirection();
+    triangleMath();
+    drawCharacter(vx, vy, b1x, b1y, b2x, b2y);
   }
-  // drawCharacter();
-  // display.clearDisplay();
-  // put your main code here, to run repeatedly:
 }
 
-// moveRight(checkButtons(3));
-//     moveLeft(checkButtons(0));
-//     moveUp(checkButtons(1));
-//     moveDown(checkButtons(2));
-//build a frame rate: timePerFrame = 5;
-//
+/**
+ * Function that determines the direction of the right joystick and setting angularSpeed2B to 
+ * this given value using some math. This is the function that determines where the triangle
+ * is pointing towards.
+ */
+void checkDirection() {
+  if (!angularDeadZone(xDir) || !angularDeadZone(yDir)) {
+    //calculate target angle from joystick direction
+    float targetAngle = atan2(-xDir, -yDir);
 
-int constrainValues(int pin, int value, int from, int to, int low, int high) {
+    //calculate angular difference between current angle and target angle
+    float angleDiff = targetAngle - theta;
+
+    //constrain the angle difference to [-PI, PI]
+    if (angleDiff > PI) angleDiff -= 2 * PI;
+    if (angleDiff < -PI) angleDiff += 2 * PI;
+
+    //set target speed to angular difference, limit it to max speed
+    angularSpeed2B = constrain(angleDiff, -maxRotationSpeed, maxRotationSpeed);
+  } else {
+    //deadzone; stop rotation smoothly.
+    angularSpeed2B = 0;
+  }
+}
+
+/**
+ * Function that physically points the triangle character to the direction that the right joystick
+ * is pointing to, whilst considering angular momentum. This is the function that actually does
+ * the movement.
+ */
+void pointDirection() {
+  float angleDiff = angularSpeed2B - angularSpeed;
+
+  angularAcceleration = maxAcceleration * (abs(angleDiff) / PI);
+  if (acceleration < 0.001) acceleration = 0;
+
+  // set angularSpeed to the respective value based on the direction that the potentiometer is pointing to.
+  if (angularSpeed < angularSpeed2B) {
+    angularSpeed += angularAcceleration;
+    if (angularSpeed > angularSpeed2B) angularSpeed = angularSpeed2B;
+  } else if (angularSpeed > angularSpeed2B) {
+    angularSpeed -= angularAcceleration;
+    if (angularSpeed < angularSpeed2B) angularSpeed = angularSpeed2B;
+  }
+
+  // gradually decrease if in the dead zone.
+  if (angularDeadZone(xDir) && angularDeadZone(yDir)) {
+    angularSpeed *= dampingFactor;
+    if (abs(angularSpeed) < 0.001) angularSpeed = 0;
+  }
+
+  //actually change triangle's angle
+  theta += angularSpeed;
+
+  // restricts range of values to [0, 2*PI]
+  if (theta > 2 * PI) theta -= 2 * PI;
+  if (theta < 0) theta += 2 * PI;
+}
+
+/**
+ * Function that contains the trigonometry required to create an isosceles triangle. I still don't quite
+ * understand how this works I sorta just looked at the math nodded my head like I knew what was going on.
+ * When I get around to it I will probably try my hand at understanding how this works.
+ */
+void triangleMath() {
+  //vertex points
+  vx = cx + (TRIANGLE_HEIGHT * cos(theta));
+  vy = cy + (TRIANGLE_HEIGHT * sin(theta));
+
+  //base vertices
+  b1x = cx - (TRIANGLE_HEIGHT / 2) * cos(theta)
+        + (TRIANGLE_BASE / 2) * cos(theta + PI / 2);
+  b1y = cy - (TRIANGLE_HEIGHT / 2) * sin(theta)
+        + (TRIANGLE_BASE / 2) * sin(theta + PI / 2);
+  b2x = cx - (TRIANGLE_HEIGHT / 2) * cos(theta)
+        - (TRIANGLE_BASE / 2) * cos(theta + PI / 2);
+  b2y = cy - (TRIANGLE_HEIGHT / 2) * sin(theta)
+        - (TRIANGLE_BASE / 2) * sin(theta + PI / 2);
+}
+
+/**
+ * Helper function that combines the map() and constrain() function into one, guaranteeing that a value from
+ * the PIN potentiometer's VALUE is constrained from the values "LOW" to the values "HIGH."
+ * @param pin the potentiometer's pin value
+ * @param value the variable storing the potentiometer's value
+ * @param from the lower bound of value's current range
+ * @param to the upper bound of value's upper range
+ * @param low the lower bound of the value's target range
+ * @param high the upper bound of the value's target range
+ * @return a constrained float value between the values LOW and HIGH (which is prolly an int because the method
+ * returns a long by default lmao)
+ */
+float constrainValues(int pin, float value, float from, float to, float low, float high) {
   value = map(analogRead(pin), from, to, low, high);
   value = constrain(value, low, high);
-  Serial.print("constrained: ");
-  Serial.print(value);
-  Serial.println();
   return value;
 }
 
-bool deadZone(int value) {
-  return value >= 51 && value <= 54;
-}
-bool stillZone(int value) {
-  return value >= -acceleration && value <= acceleration;
-}
-
+/**
+ * Helper function that determines the vertical direction that which the triangle character should be moving
+ * whilst accounting for momentum-based acceleration.
+ */
 void checkY() {
-
-  directions[1] = constrainValues(yPin, directions[1], 50, 920, 0, 100);
-//&& yPos <= SCREEN_HEIGHT - (2 * radius)  && yPos >= 0 + (2 * radius)
-
   if (!deadZone(directions[1]) && directions[1] < 52) {
     ySpeed2B = maxSpeed;
     yMoving = true;
@@ -158,83 +256,85 @@ void checkY() {
     yMoving = true;
   } else {
     ySpeed2B = 0.0;
-    Serial.println("DEADZONE");
     yMoving = false;
   }
 }
 
+/**
+ * Helper function that actually moves the triangle character with respect to the Y-Axis, accounting for
+ * momentum-based acceleration.
+ */
 void moveY() {
-
-  Serial.print("ySpeed: ");
-  Serial.print(ySpeed);
-  Serial.println();
-
-  Serial.print("ySpeed2B: ");
-  Serial.print(ySpeed2B);
-  Serial.println();
-
-  Serial.print("moving: ");
-  Serial.println(yMoving);
- 
-  if(!yMoving && abs(ySpeed) <= acceleration) {
-    Serial.println("Bingus");
+  if (!yMoving && abs(ySpeed) <= acceleration) {
     ySpeed = 0;
-  } else if (ySpeed < ySpeed2B) { //We move down
+  } else if (ySpeed < ySpeed2B) {  //We move down
     ySpeed += acceleration;
-  } else if (ySpeed > ySpeed2B) { //We move up
+  } else if (ySpeed > ySpeed2B) {  //We move up
     ySpeed -= acceleration;
   }
-
-  yPos += ySpeed;
+  cy += ySpeed;
 }
 
+/**
+ * Helper function that determines the horizontal direction that which the triangle character should be moving
+ * whilst accounting for momentum-based acceleration.
+ */
 void checkX() {
-
-  Serial.print("xSpeed: ");
-  Serial.print(xSpeed);
-  Serial.println();
-
-  directions[0] = constrainValues(xPin, directions[0], 50, 920, 0, 100);
-
-  //MOVING TO THE LEFT
-  if (!deadZone(directions[0]) && directions[0] > 52) {
-    // && xPos >= 0 + (2 * radius)
+  if (!deadZone(directions[0]) && directions[0] > 52) {  //we move left
     xSpeed2B = -maxSpeed;
     xMoving = true;
-    // return true;
-  } else if (!deadZone(directions[0]) && directions[0] < 52) {
-    // && xPos <= SCREEN_WIDTH - (2 * radius)
+  } else if (!deadZone(directions[0]) && directions[0] < 52) {  //we move right
     xSpeed2B = maxSpeed;
     xMoving = true;
-
   } else {
     xSpeed2B = 0.0;
     xMoving = false;
   }
 }
 
+/**
+ * Helper function that actually moves the triangle character with respect to the X-Axis, accounting for
+ * momentum-based acceleration.
+ */
 void moveX() {
-
-  if(!xMoving && abs(xSpeed) < acceleration) xSpeed = 0;
-  else if (xSpeed < xSpeed2B) xSpeed += acceleration; //we move right
-  else if (xSpeed > xSpeed2B) xSpeed -= acceleration; //we move left
-  xPos += xSpeed;
-}
-void drawColorCharacter() {
-  for (int i = 0; i < color; i++) {
-    tft.fillCircle(xPos, yPos, radius, i);
-  }
-  for (int g = color; g > 0; g--) {
-    tft.fillCircle(xPos, yPos, radius, g);
-  }
+  if (!xMoving && abs(xSpeed) < acceleration) xSpeed = 0;
+  else if (xSpeed < xSpeed2B) xSpeed += acceleration;  //we move right
+  else if (xSpeed > xSpeed2B) xSpeed -= acceleration;  //we move left
+  cx += xSpeed;
 }
 
-void changeColor() {
-  if (digitalRead(colorButtonPin) == HIGH) {
-    if (colorMode == 3) {
-      colorMode = 3;
-    } else {
-      colorMode++;
-    }
-  }
+/**
+ * Helper function that returns TRUE or FALSE whether or not the right joystick is in the "dead zone,"
+ * the resting spot / value of the potentiometer when nothing is touching it.
+ * @param value the value of the potentiometer (restrained to values between -1 and 1)
+ * @return true if the given value is in the dead zone, false if otherwise.
+ */
+bool angularDeadZone(float value) {
+  return value > -0.1 && value < 0.1;
+}
+
+/**
+ * Helper function that returns TRUE or FALSE whether or not the left joystick is in the "dead zone,"
+ * the resting spot / value of the potentiometer when nothing is touching it.
+ * @param value the value of the potentiometer (restrained to values between -1 and 1)
+ * @return true if the given value is in the dead zone, false if otherwise.
+ */
+bool deadZone(int value) {
+  return value >= 51 && value <= 54;
+}
+
+/**
+ * Function that draws a character by simply calling the fillTriangle method from Adafruit's Native GFX Library.
+ */
+void drawCharacter(uint16_t vx, uint16_t vy, uint16_t b1x, uint16_t b1y, uint16_t b2x, uint16_t b2y) {
+  tft.fillTriangle(vx, vy, b1x, b1y, b2x, b2y, ILI9341_WHITE);
+}
+
+/**
+ * Function that removes a character by simply calling the fillTriangle method from Adafruit's Native GFX Library.
+ * The main difference between this function and the drawCharacter function is that this one sets the triangle's color
+ * as black, the default display background color (effectively giving the illusion that the character has been cleared).
+ */
+void clearCharacter(uint16_t vx, uint16_t vy, uint16_t b1x, uint16_t b1y, uint16_t b2x, uint16_t b2y) {
+  tft.fillTriangle(vx, vy, b1x, b1y, b2x, b2y, ILI9341_BLACK);
 }
