@@ -6,4 +6,4 @@ angular and positional values.
 
 For more information on the concepts that the project is built upon, please refer to the project [report](https://docs.google.com/document/d/1EwBQhJmSSoC8HgRFptuw8qkn9xVgbsGXSP5RETaCfTY/edit?usp=sharing)
 
-For a quick and concise overview video, please refer to this [video](https://youtu.be/UBesBtQ7yv8)
+For a quick and concise overview video, please refer to this [video](https://youtu.be/SYEwovngMAE)
